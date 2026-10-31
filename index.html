@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>DucDuyRun</title>
+<title>Monster Run</title>
 
 <style>
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -75,7 +75,7 @@ canvas { width: 1000px; height: 500px; display: block; touch-action: none; }
     </div>
 
     <div id="menu">
-      <h1>⚡ Duc Duy RUN ⚡</h1>
+      <h1>⚡ Duc Duy Run ⚡</h1>
       <button class="mode" id="m-endless">♾ Chế độ vô hạn<small id="bestEndless">Chạy càng xa càng tốt</small></button>
       <button class="mode adv" id="m-adv">👸 Chế độ phiêu lưu<small id="bestAdv">Đạt 1500 điểm để giải cứu công chúa</small></button>
       <p>Chạm / click màn hình hoặc nhấn SPACE để nhảy • Nhảy kép được • Coi chừng quái bay trên trời!<br><span id="goalText"></span></p>
@@ -324,6 +324,54 @@ function drawFlyer(o) {
   }
 }
 
+function hadoRect(o) {
+  return { x: o.x + o.w - 2, y: ground - 100, w: 100 * Math.min(1, o.blast), h: 100 };
+}
+
+// Hado #99 – Kurohitsugi (phong cách tự vẽ): lửa tím trắng + mảnh đen
+function drawHado(x0, g, now) {
+  const len = 100 * g;
+
+  let gl = ctx.createRadialGradient(x0 + len / 2, ground - 40, 5, x0 + len / 2, ground - 40, 110);
+  gl.addColorStop(0, "rgba(255,255,255,0.85)");
+  gl.addColorStop(0.35, "rgba(192,132,252,0.55)");
+  gl.addColorStop(1, "rgba(126,34,206,0)");
+  ctx.fillStyle = gl;
+  ctx.beginPath();
+  ctx.ellipse(x0 + len / 2, ground - 40, len / 2 + 30, 80, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let i = 0; i < 6; i++) {
+    const bx = x0 + 10 + i * (len - 20) / 5;
+    const hh = (52 + (i % 3) * 20 + Math.sin(now * 6 + i * 1.7) * 10) * g;
+    const sway = 14 + Math.sin(now * 5 + i) * 9;     // ngả về phía sau
+    let lg = ctx.createLinearGradient(0, ground, 0, ground - hh);
+    lg.addColorStop(0, "rgba(255,255,255,0.95)");
+    lg.addColorStop(0.45, "rgba(216,180,254,0.9)");
+    lg.addColorStop(1, "rgba(147,51,234,0)");
+    ctx.fillStyle = lg;
+    ctx.beginPath();
+    ctx.moveTo(bx - 13, ground);
+    ctx.quadraticCurveTo(bx - 8, ground - hh * 0.6, bx + sway, ground - hh);
+    ctx.quadraticCurveTo(bx + 10, ground - hh * 0.45, bx + 15, ground);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Mảnh đen bay lơ lửng
+  for (let k = 0; k < 8; k++) {
+    const px = x0 + ((k * 41 + 12) % Math.max(20, len));
+    const py = ground - ((now * 55 + k * 29) % 105);
+    const sz = (4 + (k % 3) * 2) * g;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(now * 2 + k);
+    ctx.fillStyle = k % 3 === 0 ? "#2e1065" : "#0b0617";
+    ctx.fillRect(-sz, -sz, sz * 2, sz * 2);
+    ctx.restore();
+  }
+}
+
 function drawObstacle(o) {
   if (o.type === 3) {
     drawFlyer(o);
@@ -351,8 +399,24 @@ function drawObstacle(o) {
 // Quái dưới đất: mặt người đã tách nền, chạy trên đôi chân nhỏ
 function drawGroundFace(o) {
   const cx = o.x + o.w / 2;
+  const now = performance.now() * 0.001;
   const run = Math.sin(performance.now() * 0.02 + o.x * 0.05);
   const legH = 12;
+
+  // Tích lực khi tiến lại gần, rồi phóng Hado 99 ra sau lưng
+  const trig = player.x + 480, start = W - 60;
+  const ch = Math.max(0, Math.min(1, (start - o.x) / (start - trig)));
+  if (ch > 0 && o.blast < 1) {
+    const rad = 22 + ch * 32;
+    let ag = ctx.createRadialGradient(cx, o.y + o.h * 0.5, 4, cx, o.y + o.h * 0.5, rad);
+    ag.addColorStop(0, "rgba(233,213,255," + (0.35 + ch * 0.5) + ")");
+    ag.addColorStop(1, "rgba(147,51,234,0)");
+    ctx.fillStyle = ag;
+    ctx.beginPath();
+    ctx.arc(cx, o.y + o.h * 0.5, rad, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (o.blast > 0) drawHado(o.x + o.w - 2, Math.min(1, o.blast), now);
 
   // Bóng
   ctx.fillStyle = "rgba(0,0,0,0.2)";
@@ -518,7 +582,7 @@ function update(dt) {
 
   if (phase === "play") {
     score += step * speed * 0.12;
-    speed = Math.min(14, 6 + score / 150);
+    speed = Math.min(22, 6 + score / 200);   // tăng tốc từ từ
 
     // Chế độ phiêu lưu: đủ điểm thì dừng sinh quái, chờ công chúa xuất hiện
     if (mode === "adventure" && score >= WIN_SCORE) {
@@ -557,8 +621,8 @@ function update(dt) {
 
     if (spawnTimer <= 0) {
       let r = Math.random();
-      let type = r < 0.34 ? 0 : (r < 0.62 ? 1 : 2);
-      if (score > 60 && r > 0.80) type = 3;   // quái bay trên trời
+      let type = r < 0.27 ? 0 : (r < 0.62 ? 1 : (r < 0.82 ? 2 : 3));
+      if (type === 3 && score <= 60) type = 1;   // quái bay xuất hiện sau 60 điểm
 
       let h = type === 0
         ? 48 + Math.random() * 30
@@ -581,7 +645,9 @@ function update(dt) {
         w: w,
         h: h,
         type: type,
-        shootTimer: 45,
+        shootTimer: 4 + Math.random() * 8,
+        fired: false,
+        blast: 0,
         shootAnim: 0
       });
 
@@ -609,12 +675,19 @@ function update(dt) {
       if (o.shootTimer <= 0) {
         peas.push({ x: o.x + 12, y: o.y + HEAD_H * 0.8, r: 9 });
         o.shootAnim = 12;
-        o.shootTimer = 100;
+        o.shootTimer = Math.max(48, 100 - score / 25);   // bắn dày hơn theo điểm
       }
     }
   });
 
-  peas.forEach(p => { p.x -= (speed + 1.8) * step; });
+  // Quái Hado 99: tích lực rồi phóng kỹ năng ra sau lưng
+  obstacles.forEach(o => {
+    if (o.type !== 1) return;
+    if (!o.fired && o.x < player.x + 480) o.fired = true;
+    if (o.fired && o.blast < 1) o.blast = Math.min(1, o.blast + 0.09 * step);
+  });
+
+  peas.forEach(p => { p.x -= (speed + 1.8 + score / 600) * step; });
   peas = peas.filter(p => p.x > -20);
 
   if (phase === "play" || phase === "clear" || phase === "approach") {
@@ -629,7 +702,7 @@ function update(dt) {
     }
 
     for (let o of obstacles) {
-      if (hit(player, o)) {
+      if (hit(player, o) || (o.type === 1 && o.blast > 0.2 && hit(player, hadoRect(o)))) {
         endGame();
         break;
       }
